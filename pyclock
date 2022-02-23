@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+#
+#
+# Copyright (c) 2021, Keita Kitaura
+# All rights reserved.
+# WRITESTAMP(())	    
+# $Id: $
+#
+from os import environ
+environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1' # pygameの初期メッセージを非表示
+import math
+import pygame,time, sys
+from perlcompat import getopts,die
+from pygame.locals import*
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
+def usage():
+    die("""\
+usage: {} [-r size]
+  -r size : the size of window (s/m/l) 
+""".format(sys.argv[0]))
+
+class Time:
+    def __init__(self):
+        now_time = time.localtime()
+        hour = now_time.tm_hour
+        self.ampm = True #AM:True, PM:False
+        if now_time.tm_hour >= 12:
+            hour = hour - 12
+            self.ampm = not bool(self.ampm)
+            
+
+        self.minutes_total = hour * 60 + now_time.tm_min
+        self.seconds = now_time.tm_sec
+
+    def update(self):        
+        minutes_all = 60 * 12
+        self.seconds += 1
+
+        if self.seconds >= 60:
+            self.minutes_total += 1
+            self.seconds = 0
+        if self.minutes_total >= minutes_all:
+            self.minutes_total = 0
+            self.ampm  = not bool(self.ampm)
+
+        
+class Monitor:
+    def __init__(self, width, height):
+        self.width = int(width) # ウィンドウの横の長さ
+        self.height = int(height) # ウィンドウの縦の長さ
+        self.x = int(self.width / 10) # 横軸の基準
+        self.y = int(self.height / 10) # 縦軸の基準
+        
+        pygame.init()
+        screen_size = (self.width,self.height)
+        self.screen = pygame.display.set_mode(screen_size)
+
+        self.block = int(self.x * 8) # バーの長さ
+
+        self.back_color = (10,10,20) # 背景色
+        self.back_one_repeat_end_color = (100,100,130) # 1ループ終了時の背景色
+        self.back_end_color = (200,0,0) # タイマー終了時の背景色
+        self.color_seconds_hand = (100,100,150)
+        self.color_minutes_hand = (100,100,255)
+        self.x_center = int(self.width / 2)
+        self.y_center = int(self.height / 2)
+
+        self.size_number = int(self.width / 10)
+        self.text_color = (0,0,0)
+
+        self.length_hours_hand = self.x * 2.5
+        self.length_minutes_hand = self.x * 4
+        self.length_seconds_hand = self.x * 4.7
+        
+        
+    def draw_text(self, string, relative_x=1, relative_y=1, rotate=1.0):
+        # 文字列の表示
+        x = int(self.x * relative_x)
+        y = int(self.y * relative_y)
+        font = pygame.font.SysFont("Somic Sans MS", int(self.width / 5.5 * rotate))
+        color = (255, 255, 255)
+        text = font.render(string, True, color)
+        self.screen.blit(text, (x, y))
+
+    def draw_hand(self, x_s, y_s, x_t, y_t, color):
+        pygame.draw.line(self.screen, color, (x_s, y_s), (x_t, y_t), int(self.width / 250))
+        x_r = int(x_t / 8)
+        y_r = int(y_t / 8)
+        redius = int(self.width / 100)
+        pygame.draw.circle(self.screen, color, (x_t, y_t), redius)
+
+    def draw_time(self, number, x, y):
+        font = pygame.font.SysFont("Somic Sans MS", self.size_number)
+        color = (255, 255, 255)
+        text = font.render(str(number), True, color)
+        self.screen.blit(text, (x, y))
+
+    def show_numbers(self):
+        length = int(self.x * 4.6)
+
+        for num in range(1, 13):
+            x_point, y_point = self.culc_num_position(num, length)
+            self.draw_time(num, x_point, y_point)
+        
+    def culc_num_position(self, number, length):
+        angle = 30 * number
+        r = math.radians(angle)
+        x_point = self.x_center + length * math.sin(r) 
+        y_point = self.y_center - length * math.cos(r) 
+
+        width = len(str(number)) * self.size_number
+
+        x_point = x_point - (len(str(number)) * self.size_number / 5)
+        y_point = y_point - (self.size_number) / 3.5
+
+        return int(x_point), int(y_point)
+    
+
+    def update_hands(self, minutes_total):
+        r_hour, r_minutes = get_radians_of_time(minutes_total)
+        
+        x_h = int(self.x_center + self.length_hours_hand * math.sin(r_hour) )
+        y_h = int(self.y_center - self.length_hours_hand * math.cos(r_hour)  )
+
+        x_m = int(self.x_center + self.length_minutes_hand * math.sin(r_minutes) )
+        y_m = int(self.y_center - self.length_minutes_hand * math.cos(r_minutes)  )
+
+        self.draw_hand(self.x_center, self.y_center, x_m, y_m, self.color_minutes_hand)
+        self.draw_hand(self.x_center, self.y_center, x_h, y_h, self.color_seconds_hand)
+
+    def show_ampm(self, ampm):
+        if ampm:
+            self.draw_text("AM", relative_x=3.5, relative_y=3, rotate=0.5)
+        else:
+            self.draw_text("PM", relative_x=5.5, relative_y=3, rotate=0.5) 
+            
+    def show_seconds_hand(self, seconds):
+        angles = 360 / 60 * seconds
+        r = math.radians(angles)
+        
+        x = int(self.x_center + self.length_seconds_hand * math.sin(r) )
+        y = int(self.y_center - self.length_seconds_hand * math.cos(r)  )
+
+        color = (255, 0, 0)
+        pygame.draw.line(self.screen, color, (self.x_center, self.y_center), (x, y), int(self.width / 500))
+        
+        
+
+def get_radians_of_time(minutes_total):
+    minutes_all = 60 * 12
+
+    minutes = minutes_total % 60
+    
+    angles_hour = 360 / minutes_all * minutes_total
+    angles_minutes = 360 / 60 * minutes
+
+    radians_hour = math.radians(angles_hour)
+    radians_minutes = math.radians(angles_minutes)
+
+    return radians_hour, radians_minutes
+
+
+    
+def culc_center_point(x_s,y_s, width, height):
+    # 左上にある座標が中心になるように矯正する
+    length = math.sqrt(width ** 2 + height ** 2)
+    cos = width / length
+    sin = height /length
+
+    x_point = x_s - width / 2 * cos
+    y_point = y_s + height / 2 * sin
+
+    return x_point, y_point
+            
+def show_monitor(monitor):
+    # タイマーを動かす
+    color = monitor.back_color
+    monitor.screen.fill(color)
+    ct = Time()
+    while True:
+        monitor.show_seconds_hand(ct.seconds)        
+        monitor.update_hands(ct.minutes_total)
+        monitor.show_numbers()
+        monitor.show_ampm(ct.ampm)
+        pygame.display.update()
+        time.sleep(1)
+        monitor.screen.fill(color)
+
+        ct.update()
+        
+        for event in pygame.event.get():
+            if event.type== pygame.KEYDOWN:
+                if event.key== pygame.K_q:
+                    pygame.quit()
+                    sys.exit()
+    
+
+    
+                  
+def main():
+    opt = getopts('r:') or usage()
+    scale = str(opt.r) if opt.r else "s"
+    
+
+    if scale == "s":
+        size="400x400"
+    elif scale == "m":
+        size = "700x700"
+    elif scale == "l":
+        size = "1000x1000"
+                
+    width,height = size.split("x")
+    
+    monitor = Monitor(width, height)
+
+    show_monitor(monitor)
+
+    
+if __name__ == "__main__":
+    main()
+
+
+
